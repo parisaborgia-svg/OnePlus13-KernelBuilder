@@ -1,0 +1,1203 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 59df2b5e1c1a4bc6147267c0dc13f4e0c10847e6..6aa79214ece9db7e85571244cefd299528b5c2a3 100755
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -582,6 +582,23 @@ copy_to_dist_dir(
+     log = "info",
+ )
+ 
++load("//build/kernel/kleaf:kernel.bzl", "kernel_dtstree")
++
++kernel_dtstree(
++    name = "msm_dt",
++    srcs = glob(
++        ["arch/arm64/boot/dts/vendor/**"],
++        exclude = [
++            "**/.*",
++            "**/.*/**",
++            "**/BUILD.bazel",
++            "**/*.bzl",
++        ],
++    ),
++    makefile = "arch/arm64/boot/dts/vendor/oplus/Makefile",
++    visibility = ["//visibility:public"],
++)
++
+ load(":consolidate.bzl", "define_consolidate")
+ 
+ define_consolidate()
+diff --git a/BUILD.dtc b/BUILD.dtc
+index 6c50a3001ade1b3020cf27a7371d67c0f0793bf4..6d5624ef09e49287d773f3c3878a788e31e79b05 100644
+--- a/BUILD.dtc
++++ b/BUILD.dtc
+@@ -32,11 +32,12 @@ genrule(
+ genrule(
+     name = "parser",
+     srcs = ["dtc-parser.y"],
+-    outs = ["dtc-parser.tab.c", "dtc-parser.tab.h"],
++    outs = ["dtc-parser.tab.c", "dtc-parser.tab.h", "dtc-parser.h"],
+     cmd = """
+       bison -b dtc-parser -d $(location dtc-parser.y)
+       cp ./*.tab.c $(location dtc-parser.tab.c)
+       cp ./*.tab.h $(location dtc-parser.tab.h)
++      cp ./*.tab.h $(location dtc-parser.h)
+     """,
+ )
+ 
+@@ -82,7 +83,7 @@ cc_binary(
+         "fdtget.c",
+         "util.c",
+         "util.h",
+-        "version_non_gen.h",
++        "version_gen.h",
+     ],
+     deps = [":libfdt"],
+     target_compatible_with = ["@platforms//os:linux"],
+@@ -97,7 +98,7 @@ cc_binary(
+         "fdtput.c",
+         "util.c",
+         "util.h",
+-        "version_non_gen.h",
++        "version_gen.h",
+     ],
+     deps = [":libfdt"],
+     target_compatible_with = ["@platforms//os:linux"],
+@@ -112,7 +113,7 @@ cc_binary(
+         "fdtdump.c",
+         "util.c",
+         "util.h",
+-        "version_non_gen.h",
++        "version_gen.h",
+     ],
+     deps = [":libfdt"],
+     target_compatible_with = ["@platforms//os:linux"],
+@@ -127,22 +128,7 @@ cc_binary(
+         "fdtoverlay.c",
+         "util.c",
+         "util.h",
+-        "version_non_gen.h",
+-    ],
+-    deps = [":libfdt"],
+-    target_compatible_with = ["@platforms//os:linux"],
+-    visibility = ["//visibility:public"],
+-)
+-
+-cc_binary(
+-    name = "fdtoverlaymerge",
+-    copts = copts,
+-    defines = ["NO_YAML"],
+-    srcs = [
+-        "fdtoverlaymerge.c",
+-        "util.c",
+-        "util.h",
+-        "version_non_gen.h",
++        "version_gen.h",
+     ],
+     deps = [":libfdt"],
+     target_compatible_with = ["@platforms//os:linux"],
+diff --git a/Makefile b/Makefile
+index bad8d43dc9a093eb03817732245fc90400fd4d6d..75acca531376a1ea8b0a9d771190cfa4805b4872 100755
+--- a/Makefile
++++ b/Makefile
+@@ -1183,61 +1183,6 @@ endif
+ 	$(Q)$(MAKE) $(hdr-inst)=$(hdr-prefix)include/uapi
+ 	$(Q)$(MAKE) $(hdr-inst)=$(hdr-prefix)arch/$(SRCARCH)/include/uapi
+ 
+-# ---------------------------------------------------------------------------
+-# Devicetree files
+-ifeq ($(KBUILD_EXTMOD),)
+-ifneq ($(wildcard $(srctree)/arch/$(SRCARCH)/boot/dts/),)
+-dtstree := arch/$(SRCARCH)/boot/dts
+-endif
+-
+-else # KBUILD_EXTMOD
+-# Devicetree source should live in $(KBUILD_EXTMOD)/arch/$(SRCARCH)/boot/dts/
+-# But it may live inside some other folder relative to KBUILD_EXTMOD, as specified
+-# by KBUILD_EXTMOD_DTS
+-KBUILD_EXTMOD_DTS = arch/$(SRCARCH)/boot/dts
+-ifneq ($(wildcard $(KBUILD_EXTMOD)/$(KBUILD_EXTMOD_DTS)/ $(srctree)/$(KBUILD_EXTMOD)/$(KBUILD_EXTMOD_DTS)/),)
+-dtstree := $(KBUILD_EXTMOD)/$(KBUILD_EXTMOD_DTS)
+-endif
+-endif
+-
+-ifneq ($(dtstree),)
+-
+-%.dtb: include/config/kernel.release scripts_dtc
+-	$(Q)$(MAKE) $(build)=$(dtstree) $(dtstree)/$@
+-
+-PHONY += dtbs dtbs_install dtbs_check
+-dtbs: include/config/kernel.release scripts_dtc
+-	$(Q)$(MAKE) $(build)=$(dtstree)
+-
+-ifneq ($(filter dtbs_check, $(MAKECMDGOALS)),)
+-export CHECK_DTBS=y
+-dtbs: dt_binding_check
+-endif
+-
+-dtbs_check: dtbs
+-
+-dtbs_install:
+-	$(Q)$(MAKE) $(dtbinst)=$(dtstree) dst=$(INSTALL_DTBS_PATH)
+-
+-ifdef CONFIG_OF_EARLY_FLATTREE
+-all: dtbs
+-endif
+-
+-endif
+-
+-PHONY += scripts_dtc
+-scripts_dtc: scripts_basic
+-	$(Q)$(MAKE) $(build)=scripts/dtc
+-
+-ifneq ($(filter dt_binding_check, $(MAKECMDGOALS)),)
+-export CHECK_DT_BINDING=y
+-endif
+-
+-PHONY += dt_binding_check
+-dt_binding_check: scripts_dtc
+-	$(Q)$(MAKE) $(build)=Documentation/devicetree/bindings
+-
+-
+ ifeq ($(KBUILD_EXTMOD),)
+ 
+ build-dir	:= .
+diff --git a/android/abi_gki_aarch64_qcom b/android/abi_gki_aarch64_qcom
+index d22226060fb73c29491871eb0cd93944c5a8e1a3..9a31796d34db4b09a94151d845e2e3b6934ac88b 100755
+--- a/android/abi_gki_aarch64_qcom
++++ b/android/abi_gki_aarch64_qcom
+@@ -548,6 +548,7 @@
+   dma_unmap_page_attrs
+   dma_unmap_resource
+   dma_unmap_sg_attrs
++  do_send_sig_info
+   do_trace_netlink_extack
+   double_rq_lock
+   down
+diff --git a/arch/arm64/boot/dts/vendor b/arch/arm64/boot/dts/vendor
+deleted file mode 120000
+index d026089d39598111cd45b4e1804f4a57207d225b..0000000000000000000000000000000000000000
+--- a/arch/arm64/boot/dts/vendor
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../../../qcom/opensource/devicetree
+\ No newline at end of file
+diff --git a/arch/arm64/configs/vendor/sun_perf.config b/arch/arm64/configs/vendor/sun_perf.config
+index 5da9df7ba9d106ae8a64f10af4b71a31c0abd3cc..2cc981805f566b615fbb49771653810e7747adb8 100755
+--- a/arch/arm64/configs/vendor/sun_perf.config
++++ b/arch/arm64/configs/vendor/sun_perf.config
+@@ -434,9 +434,6 @@ CONFIG_OPLUS_FEATURE_STORAGE_IO_METRICS_QCOM=y
+ CONFIG_OPLUS_DEVICE_IFNO=m
+ CONFIG_OPLUS_FW_UPDATE=m
+ CONFIG_TOUCHPANEL_NOTIFY=m
+-#ifdef OPLUS_FEATURE_RECORD_MDMRST
+-CONFIG_OPLUS_FEATURE_RECORD_MDMRST=m
+-#endif
+ #ifdef OPLUS_ARCH_EXTENDS
+ #Add for multimedia kevent feedback driver
+ CONFIG_OPLUS_FEATURE_MM_FEEDBACK=m
+@@ -457,8 +454,8 @@ CONFIG_OPLUS_TRACKPOINT_REPORT=m
+ #endif /* OPLUS_TRACKPOINT_REPORT */
+ 
+ #ifdef OPLUS_UFS_DRIVER
+-CONFIG_OPLUS_UFS_DRIVER=m
+ CONFIG_OPLUS_FEATURE_STORAGE_LOG=m
++CONFIG_OPLUS_I2C_RST_NOTIFY=m
+ CONFIG_OPLUS_FEATURE_OPLUS_UPROBE=m
+ CONFIG_OPLUS_F2FSLOG_STORAGE=m
+ CONFIG_OPLUS_FEATURE_WQ_DYNPRIO=m
+diff --git a/arch/arm64/kvm/hyp/entry.S b/arch/arm64/kvm/hyp/entry.S
+index 4433a234aa9ba242f43b943d22011b5ddacd8af7..0ac6e813c7a3bbc0c2b5dcb6dfe4de1b06a07c3b 100644
+--- a/arch/arm64/kvm/hyp/entry.S
++++ b/arch/arm64/kvm/hyp/entry.S
+@@ -83,6 +83,7 @@ alternative_else_nop_endif
+ 	eret
+ 	sb
+ 
++SYM_INNER_LABEL(__hyp_restore_elr_and_panic, SYM_L_GLOBAL)
+ SYM_INNER_LABEL(__guest_exit_restore_elr_and_panic, SYM_L_GLOBAL)
+ 	// x2-x29,lr: vcpu regs
+ 	// vcpu x0-x1 on the stack
+diff --git a/drivers/android/oplus_binder b/drivers/android/oplus_binder
+index 4385a6f8a2e9a07f5a27bfc0355fd5d454c7c370..a8bd72d134b84f92143b423888b52415af684a40 120000
+--- a/drivers/android/oplus_binder
++++ b/drivers/android/oplus_binder
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/ipc
+\ No newline at end of file
++../../../vendor/oplus/kernel/ipc
+\ No newline at end of file
+diff --git a/drivers/base/kernelFwUpdate b/drivers/base/kernelFwUpdate
+index b7cd21923ea81d3fa283244574331152cd4c787b..90f7615549fe8b62ec645a77450c0166730cf184 120000
+--- a/drivers/base/kernelFwUpdate
++++ b/drivers/base/kernelFwUpdate
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/touchpanel/kernelFwUpdate
+\ No newline at end of file
++../../../vendor/oplus/kernel/touchpanel/kernelFwUpdate
+\ No newline at end of file
+diff --git a/drivers/base/magtransfer b/drivers/base/magtransfer
+index fcb170f8ee41439e8dcac2c53ffce8fba3a2f3b5..676024dce047463d1e7a64117dbb777175716d1d 120000
+--- a/drivers/base/magtransfer
++++ b/drivers/base/magtransfer
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/device_info/magnetic_cover/magtransfer
+\ No newline at end of file
++../../../vendor/oplus/kernel/device_info/magnetic_cover/magtransfer
+\ No newline at end of file
+diff --git a/drivers/base/touchpanel_notify b/drivers/base/touchpanel_notify
+index ba0c4d59d949f4fc2206702af0155ad23799f465..005d5f4197ba7b33391c6aa51f5d983a88d0d52a 120000
+--- a/drivers/base/touchpanel_notify
++++ b/drivers/base/touchpanel_notify
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/touchpanel/touchpanel_notify
+\ No newline at end of file
++../../../vendor/oplus/kernel/touchpanel/touchpanel_notify
+\ No newline at end of file
+diff --git a/drivers/devfreq/governor_msm_adreno_tz.c b/drivers/devfreq/governor_msm_adreno_tz.c
+index 0c2136ceaa22fd3daba54e3fd9ef6784721ecac0..cd44c221a916fd154ba62a64b2cbc1fdf80e96e1 100644
+--- a/drivers/devfreq/governor_msm_adreno_tz.c
++++ b/drivers/devfreq/governor_msm_adreno_tz.c
+@@ -568,6 +568,13 @@ int msm_adreno_tz_reinit(struct devfreq *devfreq)
+ }
+ EXPORT_SYMBOL_GPL(msm_adreno_tz_reinit);
+ 
++/* Not implemented in this source revision -- see msm_adreno_devfreq.h. */
++int msm_adreno_tz_set_dcvs_boost(struct devfreq *devfreq, bool val)
++{
++	return -EOPNOTSUPP;
++}
++EXPORT_SYMBOL_GPL(msm_adreno_tz_set_dcvs_boost);
++
+ int msm_adreno_tz_init(void)
+ {
+ 	return devfreq_add_governor(&msm_adreno_tz);
+diff --git a/drivers/dma-buf/heaps/mm_boost_pool b/drivers/dma-buf/heaps/mm_boost_pool
+index 77c47fb18e10c37a3d6e0f4516564b34d6b1b3fb..7cdaaa3815433bb5cde5def62e12c1e73a1471bb 120000
+--- a/drivers/dma-buf/heaps/mm_boost_pool
++++ b/drivers/dma-buf/heaps/mm_boost_pool
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/mm/mm_boost_pool
+\ No newline at end of file
++../../../../vendor/oplus/kernel/mm/mm_boost_pool
+\ No newline at end of file
+diff --git a/drivers/input/misc/qcom-hv-haptics.c b/drivers/input/misc/qcom-hv-haptics.c
+index 15df5665d16bb32a6e1318a632244e229a032df9..df2d96323452154161b65e2e5427ba2a7c977d8d 100755
+--- a/drivers/input/misc/qcom-hv-haptics.c
++++ b/drivers/input/misc/qcom-hv-haptics.c
+@@ -34,7 +34,7 @@
+ #include <linux/soc/qcom/qcom_hv_haptics.h>
+ 
+ #ifdef CONFIG_HAPTIC_FEEDBACK_MODULE
+-#include "../../misc/vibrator/aw8697_haptic/haptic_feedback.h"
++#include "../../misc/vibrator/haptic_feedback/haptic_feedback.h"
+ #endif
+ 
+ #ifndef OPLUS_FEATURE_CHG_BASIC
+diff --git a/drivers/input/oplus_secure_drivers b/drivers/input/oplus_secure_drivers
+index 57a079bce29b0af9381ee75b6cfa98efd8abdf47..fa6073e0c445ca1ffe3633fd93a9b85d29e4520f 120000
+--- a/drivers/input/oplus_secure_drivers
++++ b/drivers/input/oplus_secure_drivers
+@@ -1 +1 @@
+-../../../../vendor/oplus/secure/common/bsp/drivers
+\ No newline at end of file
++../../../vendor/oplus/secure/common/bsp/drivers
+\ No newline at end of file
+diff --git a/drivers/md/dm-verity.h b/drivers/md/dm-verity.h
+index 12a93777f4fafc3ce156d77074a4a901eafe204a..f16705e929cd9768789c877629469e5b405b9e20 100644
+--- a/drivers/md/dm-verity.h
++++ b/drivers/md/dm-verity.h
+@@ -39,9 +39,11 @@ struct dm_verity {
+ 	struct dm_target *ti;
+ 	struct dm_bufio_client *bufio;
+ 	char *alg_name;
+-	struct crypto_ahash *tfm;
++	struct crypto_ahash *ahash_tfm; /* either this or shash_tfm is set */
++	struct crypto_shash *shash_tfm; /* either this or ahash_tfm is set */
+ 	u8 *root_digest;	/* digest of the root block */
+ 	u8 *salt;		/* salt: its size is salt_size */
++	u8 *initial_hashstate;	/* salted initial state, if shash_tfm is set */
+ 	u8 *zero_digest;	/* digest for a zero block */
+ 	unsigned int salt_size;
+ 	sector_t data_start;	/* data offset in 512-byte sectors */
+@@ -55,8 +57,9 @@ struct dm_verity {
+ 	unsigned char version;
+ 	bool hash_failed:1;	/* set if hash of any block failed */
+ 	bool use_tasklet:1;	/* try to verify in tasklet before work-queue */
++	unsigned char mb_max_msgs; /* max multibuffer hashing interleaving factor */
+ 	unsigned int digest_size;	/* digest size for the current hash algorithm */
+-	unsigned int ahash_reqsize;/* the size of temporary space for crypto */
++	unsigned int hash_reqsize; /* the size of temporary space for crypto */
+ 	enum verity_mode mode;	/* mode for handling verification errors */
+ 	unsigned int corrupted_errs;/* Number of errors for corrupted blocks */
+ 
+@@ -74,6 +77,15 @@ struct dm_verity {
+ 	mempool_t recheck_pool;
+ };
+ 
++#define DM_VERITY_MAX_PENDING_DATA_BLOCKS	HASH_MAX_MB_MSGS
++
++struct pending_block {
++	void *data;
++	sector_t blkno;
++	u8 want_digest[HASH_MAX_DIGESTSIZE];
++	u8 real_digest[HASH_MAX_DIGESTSIZE];
++};
++
+ struct dm_verity_io {
+ 	struct dm_verity *v;
+ 
+@@ -89,37 +101,28 @@ struct dm_verity_io {
+ 	struct work_struct work;
+ 
+ 	u8 tmp_digest[HASH_MAX_DIGESTSIZE];
+-	u8 real_digest[HASH_MAX_DIGESTSIZE];
+-	u8 want_digest[HASH_MAX_DIGESTSIZE];
+ 
+ 	/*
+-	 * Three variably-size fields follow this struct:
+-	 *
+-	 * u8 hash_req[v->ahash_reqsize];
+-	 * u8 real_digest[v->digest_size];
+-	 * u8 want_digest[v->digest_size];
+-	 *
+-	 * To access them use: verity_io_hash_req(), verity_io_real_digest()
+-	 * and verity_io_want_digest().
++	 * This is the queue of data blocks that are pending verification.  We
++	 * allow multiple blocks to be queued up in order to support multibuffer
++	 * hashing, i.e. interleaving the hashing of multiple messages.  On many
++	 * CPUs this improves performance significantly.
+ 	 */
+-};
++	int num_pending;
++	struct pending_block pending_blocks[DM_VERITY_MAX_PENDING_DATA_BLOCKS];
+ 
+-static inline struct ahash_request *verity_io_hash_req(struct dm_verity *v,
+-						     struct dm_verity_io *io)
+-{
+-	return (struct ahash_request *)(io + 1);
+-}
+-
+-static inline u8 *verity_io_real_digest(struct dm_verity *v,
+-					struct dm_verity_io *io)
+-{
+-	return (u8 *)(io + 1) + v->ahash_reqsize;
+-}
++	/*
++	 * This struct is followed by a variable-sized hash request of size
++	 * v->hash_reqsize, either a struct ahash_request or a struct shash_desc
++	 * (depending on whether ahash_tfm or shash_tfm is being used).  To
++	 * access it, use verity_io_hash_req().
++	 */
++};
+ 
+-static inline u8 *verity_io_want_digest(struct dm_verity *v,
+-					struct dm_verity_io *io)
++static inline void *verity_io_hash_req(struct dm_verity *v,
++				       struct dm_verity_io *io)
+ {
+-	return (u8 *)(io + 1) + v->ahash_reqsize + v->digest_size;
++	return io + 1;
+ }
+ 
+ extern int verity_hash(struct dm_verity *v, struct dm_verity_io *io,
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index d1200bd61eb4d6e19219d1f45db88deb9fd9b5b9..7a1fc249c4f58a5873c71ab86dd9c49bc835c02b 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -604,7 +604,5 @@ source "drivers/misc/cardreader/Kconfig"
+ source "drivers/misc/uacce/Kconfig"
+ source "drivers/misc/pvpanic/Kconfig"
+ source "drivers/misc/mchp_pci1xxxx/Kconfig"
+-#ifdef OPLUS_FEATURE_CHG_BASIC
+-source "drivers/misc/vibrator/aw8697_haptic/Kconfig"
+-#endif
++source "drivers/misc/vibrator/haptic_feedback/Kconfig"
+ endmenu
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index 7cb1be978721d53a354b94ebd8adafde81c8c4b3..e3ad0a68951644a1df63c621dff48a162042c5e1 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -70,6 +70,6 @@ obj-$(CONFIG_TPS6594_PFSM)	+= tps6594-pfsm.o
+ obj-$(CONFIG_UID_SYS_STATS)	+= uid_sys_stats.o
+ obj-$(CONFIG_QSEECOM_PROXY) 	+= qseecom_proxy.o
+ #ifdef OPLUS_FEATURE_CHG_BASIC
+-obj-$(CONFIG_HAPTIC_FEEDBACK) += vibrator/aw8697_haptic/
++obj-$(CONFIG_HAPTIC_FEEDBACK) += vibrator/haptic_feedback/
+ #endif
+ obj-$(CONFIG_PKVM_SMC_FILTER)  += pkvm-smc/
+diff --git a/drivers/misc/vibrator b/drivers/misc/vibrator
+index 1daadce53019aba62f93f4db18c07b8586d838b4..0b0075e669c94ff222cc76383a6def7f336d3ba8 120000
+--- a/drivers/misc/vibrator
++++ b/drivers/misc/vibrator
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/vibrator
+\ No newline at end of file
++../../../vendor/oplus/kernel/vibrator
+\ No newline at end of file
+diff --git a/drivers/mmc/core/mmc.c b/drivers/mmc/core/mmc.c
+index ab3897997c617a0f3c2926d734027c9aa5b585e0..de0109fb11597ddb17015e7f806f17190d7cd8db 100644
+--- a/drivers/mmc/core/mmc.c
++++ b/drivers/mmc/core/mmc.c
+@@ -55,7 +55,7 @@ static const unsigned int taac_mant[] = {
+ #define UNSTUFF_BITS(resp,start,size)					\
+ 	({								\
+ 		const int __size = size;				\
+-		const u32 __mask = (__size < 32 ? 1 << __size : 0) - 1;	\
++		const u32 __mask = __size < 32 ? (1u << __size) - 1 : 0xffffffffu;	\
+ 		const int __off = 3 - ((start) / 32);			\
+ 		const int __shft = (start) & 31;			\
+ 		u32 __res;						\
+diff --git a/drivers/mmc/core/sd.c b/drivers/mmc/core/sd.c
+index 240469a881a272a1d0c35495ff5c018aa3f5b822..c105d3cea1e584ae61531f9e7b785bdb899d03f1 100644
+--- a/drivers/mmc/core/sd.c
++++ b/drivers/mmc/core/sd.c
+@@ -59,7 +59,7 @@ static const unsigned int sd_au_size[] = {
+ #define UNSTUFF_BITS(resp,start,size)					\
+ 	({								\
+ 		const int __size = size;				\
+-		const u32 __mask = (__size < 32 ? 1 << __size : 0) - 1;	\
++		const u32 __mask = __size < 32 ? (1u << __size) - 1 : 0xffffffffu;	\
+ 		const int __off = 3 - ((start) / 32);			\
+ 		const int __shft = (start) & 31;			\
+ 		u32 __res;						\
+diff --git a/drivers/power/oplus b/drivers/power/oplus
+index 7874b1e2c721370d2bbe011cbeea8ae2f3ab0b90..e85eb098a5616c6a8c2554b1e6147e13ef1a25ff 120000
+--- a/drivers/power/oplus
++++ b/drivers/power/oplus
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/charger
+\ No newline at end of file
++../../../vendor/oplus/kernel/charger
+\ No newline at end of file
+diff --git a/drivers/remoteproc/qcom_q6v5.c b/drivers/remoteproc/qcom_q6v5.c
+index 70253243f9655b675addf58a720f5589e4291b8f..a8747cd0ccf9795f4984a82239252cca559c7a00 100755
+--- a/drivers/remoteproc/qcom_q6v5.c
++++ b/drivers/remoteproc/qcom_q6v5.c
+@@ -63,7 +63,7 @@ static struct workqueue_struct *crash_report_workqueue = NULL;
+ #define MAX_SSR_DEFAULT_REASON_LEN 16
+ #define REMOTEPROC_MSS "remoteproc-mss"
+ extern bool SKIP_GENERATE_RAMDUMP;
+-extern void mdmreason_set(char * buf);
++static inline void mdmreason_set(char * buf) { }
+ #endif
+ 
+ #ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+diff --git a/drivers/soc/Kconfig b/drivers/soc/Kconfig
+index 0ff8afd2fcd20077cdcbd8c5e6103d9e445fd36b..45261b18ed98b504e92dd1c19cee600f324db6a5 100755
+--- a/drivers/soc/Kconfig
++++ b/drivers/soc/Kconfig
+@@ -45,9 +45,6 @@ source "drivers/soc/oplus/boot/Kconfig"
+ #endif /* OPLUS_FEATURE_BOOT */
+ 
+ 
+-#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+-source "drivers/soc/oplus/mdmrst/Kconfig"
+-#endif /*OPLUS_FEATURE_MODEM_MINIDUMP*/
+ 
+ #ifdef OPLUS_FEATURE_TP_BASIC
+ source "drivers/soc/oplus/device_info/Kconfig"
+diff --git a/drivers/soc/Makefile b/drivers/soc/Makefile
+index 8ff85211f83bf5ca6ac1910846545623db7b252c..3cd00ff71e353cce3d1428193291a5a760c3c0ac 100755
+--- a/drivers/soc/Makefile
++++ b/drivers/soc/Makefile
+@@ -37,7 +37,7 @@ obj-$(CONFIG_PLAT_VERSATILE)	+= versatile/
+ obj-y				+= xilinx/
+ 
+ #ifdef OPLUS_FEATURE_MM_FEEDBACK
+-obj-$(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)	+= oplus/multimedia/
++obj-$(CONFIG_OPLUS_FEATURE_MM_FEEDBACK)	+= oplus/multimedia/common/
+ #endif /* OPLUS_FEATURE_MM_FEEDBACK */
+ 
+ #ifdef OPLUS_TRACKPOINT_REPORT
+@@ -59,11 +59,20 @@ obj-$(CONFIG_OPLUS_FEATURE_QCOM_WATCHDOG) += oplus/boot/qcom_watchdog/
+ 
+ #ifdef OPLUS_UFS_DRIVER
+ obj-$(CONFIG_OPLUS_UFS_DRIVER) += oplus/storage/common/ufs_oplus_dbg/
+-obj-$(CONFIG_OPLUS_UFS_DRIVER) += oplus/storage/common/oplus_uprobe/
+-obj-$(CONFIG_OPLUS_UFS_DRIVER) += oplus/storage/common/storage_log/
+-obj-$(CONFIG_OPLUS_UFS_DRIVER) += oplus/storage/common/oplus_f2fslog_storage/
+-obj-$(CONFIG_OPLUS_UFS_DRIVER) += oplus/storage/common/wq_dynamic_priority/
+ #endif
++# NOTE: oplus_uprobe/storage_log/oplus_f2fslog_storage/wq_dynamic_priority each
++# have their own independent Kconfig gate (CONFIG_OPLUS_FEATURE_OPLUS_UPROBE,
++# CONFIG_OPLUS_FEATURE_STORAGE_LOG, CONFIG_OPLUS_F2FSLOG_STORAGE,
++# CONFIG_OPLUS_FEATURE_WQ_DYNPRIO respectively) and must NOT be wrapped behind
++# CONFIG_OPLUS_UFS_DRIVER -- doing so silently drops them whenever
++# OPLUS_UFS_DRIVER is disabled (as it is in this defconfig, due to a real bug
++# in ufs_oplus_dbg unrelated to these four), even though their own configs are
++# enabled. Descend unconditionally; each subdirectory's own Makefile applies
++# its own config gate.
++obj-y += oplus/storage/common/oplus_uprobe/
++obj-y += oplus/storage/common/storage_log/
++obj-y += oplus/storage/common/oplus_f2fslog_storage/
++obj-y += oplus/storage/common/wq_dynamic_priority/
+ 
+ #ifdef CONFIG_OPLUS_FEATURE_STORAGE_IO_METRICS
+ obj-$(CONFIG_OPLUS_FEATURE_STORAGE_IO_METRICS) += oplus/storage/common/io_metrics/
+@@ -74,7 +83,7 @@ obj-y += oplus/dft/
+ #endif /* OPLUS_FEATURE_DFT */
+ 
+ #ifdef OPLUS_SUBSYS_SLEEP_MONITOR
+-obj-$(CONFIG_OPLUS_SUBSYS_SLEEP_MONITOR)     += oplus/power/subsys_sleep_monitor/
++obj-$(CONFIG_OPLUS_SUBSYS_SLEEP_MONITOR)     += oplus/power/subsys_sleep_monitor/oplus_subsys_sleep_monitor/
+ #endif /* OPLUS_SUBSYS_SLEEP_MONITOR */
+ 
+ #ifdef OPLUS_FEATURE_FPGA
+diff --git a/drivers/soc/oplus/boot b/drivers/soc/oplus/boot
+index a92ff6bb360716752c8200c72b8fd13d708e44ae..365fed76fc9adce83f59c28ba5ea5a5a40f856c2 120000
+--- a/drivers/soc/oplus/boot
++++ b/drivers/soc/oplus/boot
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/boot
+\ No newline at end of file
++../../../../vendor/oplus/kernel/boot
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/device_info b/drivers/soc/oplus/device_info
+index 4a2c7e7f135c7ffb200d237cf0f0880f40f122af..d31ca15f7b87bcd0167d07b73c389353bae34b12 120000
+--- a/drivers/soc/oplus/device_info
++++ b/drivers/soc/oplus/device_info
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/device_info/device_info
+\ No newline at end of file
++../../../../vendor/oplus/kernel/device_info/device_info
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/dfr b/drivers/soc/oplus/dfr
+index 52d7e52e96814c5ee905c1b271f4aa650bf7c6b3..66c18671fa7909d13e7ec1e57a61fd8b3f4efea5 120000
+--- a/drivers/soc/oplus/dfr
++++ b/drivers/soc/oplus/dfr
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/dfr
+\ No newline at end of file
++../../../../vendor/oplus/kernel/dfr
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/dft b/drivers/soc/oplus/dft
+index 61bfcade4cdb43aa628373cd647b62879b27c034..f6f06ab1b6e8ad0aa8a53f85b7ff38eacd695fe8 120000
+--- a/drivers/soc/oplus/dft
++++ b/drivers/soc/oplus/dft
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/dft
+\ No newline at end of file
++../../../../vendor/oplus/kernel/dft
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/fpga_notify b/drivers/soc/oplus/fpga_notify
+index b9fa653dd4ed7f9d4c16fc6ae91f0475a4eee2cf..e436a08fa1103c905e029945409866c8a658f485 120000
+--- a/drivers/soc/oplus/fpga_notify
++++ b/drivers/soc/oplus/fpga_notify
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/device_info/oplus_fpga/fpga_notify
+\ No newline at end of file
++../../../../vendor/oplus/kernel/device_info/oplus_fpga/fpga_notify
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/hans b/drivers/soc/oplus/hans
+index a382fe18620526aabbc7bf2d43c3206c5803e845..46dafce002e207ad1ed30998f6c54b1ba57f05b9 120000
+--- a/drivers/soc/oplus/hans
++++ b/drivers/soc/oplus/hans
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/hans
+\ No newline at end of file
++../../../../vendor/oplus/kernel/hans
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/midas b/drivers/soc/oplus/midas
+index f216f234664abbaf6f1e7289458dc562eabcee97..5a5fe8d811c4a9a75e2bb8ed906cdc43578595ca 120000
+--- a/drivers/soc/oplus/midas
++++ b/drivers/soc/oplus/midas
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/cpu/midas
+\ No newline at end of file
++../../../../vendor/oplus/kernel/cpu/midas
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/multimedia b/drivers/soc/oplus/multimedia
+index 633f461ee5757e8e20c32e33e156f252fb85689f..5829461d514866c1915e23faae9dcd241384dab1 120000
+--- a/drivers/soc/oplus/multimedia
++++ b/drivers/soc/oplus/multimedia
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/multimedia/feedback
+\ No newline at end of file
++../../../../vendor/oplus/kernel/multimedia/feedback
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/power b/drivers/soc/oplus/power
+index ebdd494a83a1ae2a22dfc56c6d93c49c1a7f35af..e9f64b91538f288ce1854283113a0ebc5115f012 120000
+--- a/drivers/soc/oplus/power
++++ b/drivers/soc/oplus/power
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/power
+\ No newline at end of file
++../../../../vendor/oplus/kernel/power
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/storage b/drivers/soc/oplus/storage
+index 85763db0e9b8ec3894509df84bcfff3ca49bc798..9c76c17e6b4ac455aa13442a41c0540fef5c9f34 120000
+--- a/drivers/soc/oplus/storage
++++ b/drivers/soc/oplus/storage
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/storage/storage_feature_in_module
+\ No newline at end of file
++../../../../vendor/oplus/kernel/storage/storage_feature_in_module
+\ No newline at end of file
+diff --git a/drivers/soc/oplus/trackpoint b/drivers/soc/oplus/trackpoint
+index 4e4687b61a7cc1ae2172d81eb8119b69f6ad08e3..8acd8b09cd54a87b6b43b45cad078521fffc0974 120000
+--- a/drivers/soc/oplus/trackpoint
++++ b/drivers/soc/oplus/trackpoint
+@@ -1 +1 @@
+-../../../../../vendor/qcom/opensource/display-drivers/oplus/common/trackpoint
+\ No newline at end of file
++../../../../vendor/qcom/opensource/display-drivers/oplus/common/trackpoint
+\ No newline at end of file
+diff --git a/include/linux/cpufreq_bouncing.h b/include/linux/cpufreq_bouncing.h
+index f57763ac1be130d4c67a6151676f8ad7414cf0f1..0589fa0497cd6fb01c7cd184bc85408c4d961df9 120000
+--- a/include/linux/cpufreq_bouncing.h
++++ b/include/linux/cpufreq_bouncing.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/cpu/cpufreq_bouncing/cpufreq_bouncing.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/cpu/cpufreq_bouncing/cpufreq_bouncing.h
+\ No newline at end of file
+diff --git a/include/linux/oplus_omrg.h b/include/linux/oplus_omrg.h
+index 3733da0848285314d5d08091013cb2d911551e9b..564400425a3418057aac5e7fa68591bd012afb03 120000
+--- a/include/linux/oplus_omrg.h
++++ b/include/linux/oplus_omrg.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/cpu/oplus_omrg/oplus_omrg.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/cpu/oplus_omrg/oplus_omrg.h
+\ No newline at end of file
+diff --git a/include/linux/pogo_common.h b/include/linux/pogo_common.h
+index 0bd65ab393a8f29777f2342314392eaac0a4752b..df29292c1af8af9870caf2549dc19af3e0dcb848 120000
+--- a/include/linux/pogo_common.h
++++ b/include/linux/pogo_common.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/device_info/pogo_keyboard/pogo_common.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/device_info/pogo_keyboard/pogo_common.h
+\ No newline at end of file
+diff --git a/include/linux/qseecom_kernel.h b/include/linux/qseecom_kernel.h
+index 49994e8e918438bd41942a2092897aeb7ccb0305..c7c2c950c8d3cefc5065dfdc8cfc64b153fde481 100644
+--- a/include/linux/qseecom_kernel.h
++++ b/include/linux/qseecom_kernel.h
+@@ -42,6 +42,15 @@ struct qseecom_drv_ops {
+ 	int (*qseecom_start_app)(struct qseecom_handle **handle,
+ 				char *app_name, uint32_t size);
+ 	int (*qseecom_shutdown_app)(struct qseecom_handle **handle);
++	/*
++	 * All three qseecom_drv_ops initialisers in
++	 * vendor/qcom/opensource/securemsm-kernel (qseecom/qseecom.c,
++	 * smcinvoke/compat/smcinvoke_kernel.c, smcinvoke/si_core_xts/qseecom.c)
++	 * set this member, but it was missing from this header -- the 850 source
++	 * pull left the header behind its consumers.
++	 */
++	int (*qseecom_process_listener_from_smcinvoke)(uint32_t *result,
++				u64 *response_type, unsigned int *data);
+ };
+ 
+ int provide_qseecom_kernel_fun_ops(const struct qseecom_drv_ops *ops);
+diff --git a/include/linux/soc/qcom/msm_adreno_devfreq.h b/include/linux/soc/qcom/msm_adreno_devfreq.h
+index 53f99c6d11eaf1d6d024d02b8a8c35d75fc914a1..df8ed8f8b9dada5e93835902da3b96663805029a 100644
+--- a/include/linux/soc/qcom/msm_adreno_devfreq.h
++++ b/include/linux/soc/qcom/msm_adreno_devfreq.h
+@@ -78,11 +78,24 @@ typedef void(*getbw_func)(unsigned long *, unsigned long *, void *);
+ 
+ #if IS_ENABLED(CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ)
+ int msm_adreno_tz_reinit(struct devfreq *devfreq);
++/*
++ * adreno_sysfs.c (KERNEL_VERSION >= 6.3) calls this, but this source pull's
++ * governor_msm_adreno_tz.c never declared or defined it. Stubbed there to return
++ * -EOPNOTSUPP, matching what adreno_sysfs.c's own pre-6.3 #else branch already does.
++ * NOTE: this global header and graphics-kernel/msm_adreno_devfreq.h share the include
++ * guard MSM_ADRENO_DEVFREQ_H, and kgsl_pwrscale.h includes this one first -- so the
++ * local copy is never processed and declarations MUST go here.
++ */
++int msm_adreno_tz_set_dcvs_boost(struct devfreq *devfreq, bool val);
+ #else
+ static inline int msm_adreno_tz_reinit(struct devfreq *devfreq)
+ {
+ 	return 0;
+ }
++static inline int msm_adreno_tz_set_dcvs_boost(struct devfreq *devfreq, bool val)
++{
++	return -EOPNOTSUPP;
++}
+ #endif
+ 
+ #if IS_ENABLED(CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON)
+diff --git a/include/linux/soc/qcom/panel_event_notifier.h b/include/linux/soc/qcom/panel_event_notifier.h
+index a0a17a34a554fe2a2254d764f1ce0ce18f68980c..050bdf61e9b0971ed28cef1937b2c455620e34f0 100755
+--- a/include/linux/soc/qcom/panel_event_notifier.h
++++ b/include/linux/soc/qcom/panel_event_notifier.h
+@@ -42,6 +42,18 @@ enum panel_event_notifier_client {
+ 	PANEL_EVENT_NOTIFIER_CLIENT_MM,
+ 	PANEL_EVENT_NOTIFIER_CLIENT_TRI_STATE_KEY,
+ 	PANEL_EVENT_NOTIFIER_CLIENT_POGOPIN,
++	/*
++	 * Consumers in the vendor tree reference these but the 850 header predates them:
++	 *   SECONDARY_THEIA_BLACK  -> vendor/oplus/kernel/dfr/common/theia/black_screen_check.c
++	 *   SECONDARY_THEIA_BRIGHT -> vendor/oplus/kernel/dfr/common/theia/bright_screen_check.c
++	 *   TRI_STATE_KEY_FOR_SEC  -> vendor/oplus/kernel/device_info/tri_state_key/oplus_tri_key.c
++	 * Appended here (rather than beside their PRIMARY/base siblings) so that every pre-existing
++	 * enumerator keeps its original numeric value -- stock prebuilt modules that we do not rebuild
++	 * are kept alongside ours and would otherwise disagree about these values.
++	 */
++	PANEL_EVENT_NOTIFIER_CLIENT_SECONDARY_THEIA_BLACK,
++	PANEL_EVENT_NOTIFIER_CLIENT_SECONDARY_THEIA_BRIGHT,
++	PANEL_EVENT_NOTIFIER_CLIENT_TRI_STATE_KEY_FOR_SEC,
+ 	PANEL_EVENT_NOTIFIER_CLIENT_MAX
+ };
+ 
+@@ -63,6 +75,8 @@ enum panel_event_notification_type {
+ 	DRM_PANEL_EVENT_PWM_TURBO = 0x14,
+ 	DRM_PANEL_EVENT_ADFR_MIN_FPS = 0x15,
+ 	DRM_PANEL_EVENT_HBM_STATE = 0x16,
++	/* referenced by vendor/oplus/sensor/kernel/qcom/sensor/oplus_ssc_interact/oplus_ssc_interact.c */
++	DRM_PANEL_EVENT_PULSE_MODE = 0x17,
+ #endif /* OPLUS_FEATURE_DISPLAY */
+ 	DRM_PANEL_EVENT_MAX
+ };
+diff --git a/include/linux/task_overload.h b/include/linux/task_overload.h
+index f96cb82fa4c33b67748df58ae4b389fe544f9f81..219fc1099e824e3c4b105911d694543a85ecb777 120000
+--- a/include/linux/task_overload.h
++++ b/include/linux/task_overload.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/cpu/oplus_overload/task_overload.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/cpu/oplus_overload/task_overload.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/boot b/include/soc/oplus/boot
+index 5402fcef4b6d3bfe4a78571ce095c2b8a28498a5..6914c3e296917076b7630835b57e53e9a056bbd3 120000
+--- a/include/soc/oplus/boot
++++ b/include/soc/oplus/boot
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/boot/include
+\ No newline at end of file
++../../../../vendor/oplus/kernel/boot/include
+\ No newline at end of file
+diff --git a/include/soc/oplus/device_info.h b/include/soc/oplus/device_info.h
+index 4401b3c173920c9ef6f99bc7e72a24ef43fc71c7..9b259ed1cc90a5586b7dc8153eb2b1f1b3200977 120000
+--- a/include/soc/oplus/device_info.h
++++ b/include/soc/oplus/device_info.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/device_info/device_info/device_info.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/device_info/device_info/device_info.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/dfr b/include/soc/oplus/dfr
+index f2b9eb49c18f938f28fa2ddcff3cb5ab862d5508..09fa6c74fafa8d03540d35087d755a296cfadff2 120000
+--- a/include/soc/oplus/dfr
++++ b/include/soc/oplus/dfr
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/dfr/include
+\ No newline at end of file
++../../../../vendor/oplus/kernel/dfr/include
+\ No newline at end of file
+diff --git a/include/soc/oplus/dft b/include/soc/oplus/dft
+index 71a91b6e5af760f99f83bbe4bafd7329d482d0ad..a7ada6bdd046123ba0b894ac641d45304c855278 120000
+--- a/include/soc/oplus/dft
++++ b/include/soc/oplus/dft
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/dft/include
+\ No newline at end of file
++../../../../vendor/oplus/kernel/dft/include
+\ No newline at end of file
+diff --git a/include/soc/oplus/fpga_notify.h b/include/soc/oplus/fpga_notify.h
+index 5e16a3e5eb7a893c1664588c8ad863c18309c754..eae8e3c5c6b18a4702a91e599f0cde40bc4c28b4 120000
+--- a/include/soc/oplus/fpga_notify.h
++++ b/include/soc/oplus/fpga_notify.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/device_info/oplus_fpga/fpga_notify/fpga_notify.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/device_info/oplus_fpga/fpga_notify/fpga_notify.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/kernelFwUpdate.h b/include/soc/oplus/kernelFwUpdate.h
+index cf85ee3b920623e7120070baeb059ae45ed41a80..7cd80797a3d5d4f9549dbf7563dfbeec99dbedd6 120000
+--- a/include/soc/oplus/kernelFwUpdate.h
++++ b/include/soc/oplus/kernelFwUpdate.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/touchpanel/kernelFwUpdate/kernelFwUpdate.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/touchpanel/kernelFwUpdate/kernelFwUpdate.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/magcvr_notify.h b/include/soc/oplus/magcvr_notify.h
+index d062706e70d2c5b0a3e1ead18f9a7ac047893221..fbf622b6b4188ad2d13d1750445e3b47b8ee126c 120000
+--- a/include/soc/oplus/magcvr_notify.h
++++ b/include/soc/oplus/magcvr_notify.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/device_info/magnetic_cover/magtransfer/magcvr_notify.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/device_info/magnetic_cover/magtransfer/magcvr_notify.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/oplus_mm_kevent_fb.h b/include/soc/oplus/oplus_mm_kevent_fb.h
+index 8d342e786e67b985f6871f6fbe6db63a736b4261..f614def7defa1707cf382214c57aeaab80553aa5 120000
+--- a/include/soc/oplus/oplus_mm_kevent_fb.h
++++ b/include/soc/oplus/oplus_mm_kevent_fb.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/multimedia/feedback/oplus_mm_kevent_fb.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/multimedia/feedback/common/oplus_mm_kevent_fb.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/oplus_trackpoint_report.h b/include/soc/oplus/oplus_trackpoint_report.h
+index f44d9c25203f486cadf4e904554a07c634336472..d276c6a76644a3c1eb1c695ca4202c4c771a7734 120000
+--- a/include/soc/oplus/oplus_trackpoint_report.h
++++ b/include/soc/oplus/oplus_trackpoint_report.h
+@@ -1 +1 @@
+-../../../../../vendor/qcom/opensource/display-drivers/oplus/common/trackpoint/oplus_trackpoint_report.h
+\ No newline at end of file
++../../../../vendor/qcom/opensource/display-drivers/oplus/common/trackpoint/oplus_trackpoint_report.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/system/kernel_fb.h b/include/soc/oplus/system/kernel_fb.h
+index 329169ef492d07b1a357b3d4575089c2fefa9747..fa1fa786019490ff4d5d4e63bab68322ab2c2b7d 120000
+--- a/include/soc/oplus/system/kernel_fb.h
++++ b/include/soc/oplus/system/kernel_fb.h
+@@ -1 +1 @@
+-../../../../../../vendor/oplus/kernel/dft/include/kernel_fb.h
+\ No newline at end of file
++../../../../../vendor/oplus/kernel/dft/include/kernel_fb.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/system/olc.h b/include/soc/oplus/system/olc.h
+index bfc107ee9462adfc9fde4d226c6362c3c69e4d4d..62e1e797c7a9aff0e3cab74a7fa29947e28405fb 120000
+--- a/include/soc/oplus/system/olc.h
++++ b/include/soc/oplus/system/olc.h
+@@ -1 +1 @@
+-../../../../../../vendor/oplus/kernel/dft/include/olc.h
+\ No newline at end of file
++../../../../../vendor/oplus/kernel/dft/include/olc.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/touchpanel_event_notify.h b/include/soc/oplus/touchpanel_event_notify.h
+index cfa6edfb85c162109cc3e1e9404d616494f98b6c..17fb476e33f7e6a28185c52ae072dd60aa93dad0 120000
+--- a/include/soc/oplus/touchpanel_event_notify.h
++++ b/include/soc/oplus/touchpanel_event_notify.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/touchpanel/touchpanel_notify/touchpanel_event_notify.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/touchpanel/touchpanel_notify/touchpanel_event_notify.h
+\ No newline at end of file
+diff --git a/include/soc/oplus/ufs-oplus-dbg.h b/include/soc/oplus/ufs-oplus-dbg.h
+index 4548354801778a30b30a69412e0993d3527f1bcb..a6503f4d3cf88fe9a61f850294777b627e377973 120000
+--- a/include/soc/oplus/ufs-oplus-dbg.h
++++ b/include/soc/oplus/ufs-oplus-dbg.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/storage/storage_feature_in_module/common/ufs_oplus_dbg/ufs-oplus-dbg.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/storage/storage_feature_in_module/common/ufs_oplus_dbg/ufs-oplus-dbg.h
+\ No newline at end of file
+diff --git a/include/trace/events/oplus_omrg_trace.h b/include/trace/events/oplus_omrg_trace.h
+index 7f02fe73c48f8064e0146158a753ab4b60cd5fab..4ddf8cedebc53b2fecf2714a2cc336032d4da4d9 120000
+--- a/include/trace/events/oplus_omrg_trace.h
++++ b/include/trace/events/oplus_omrg_trace.h
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/cpu/oplus_omrg/oplus_omrg_trace.h
+\ No newline at end of file
++../../../../vendor/oplus/kernel/cpu/oplus_omrg/oplus_omrg_trace.h
+\ No newline at end of file
+diff --git a/include/trace/hooks/mmc.h b/include/trace/hooks/mmc.h
+index 68bc35649e58085e6e27fbcd2443c2a4e00ea07c..37e7bc424c905a7221f73542e765a09658148fbf 100644
+--- a/include/trace/hooks/mmc.h
++++ b/include/trace/hooks/mmc.h
+@@ -33,10 +33,6 @@ DECLARE_RESTRICTED_HOOK(android_rvh_mmc_resume,
+ 	TP_PROTO(struct mmc_host *host, bool *resume_success),
+ 	TP_ARGS(host, resume_success), 1);
+ 
+-DECLARE_HOOK(android_vh_mmc_update_mmc_queue,
+-	TP_PROTO(struct mmc_card *card, struct mmc_queue *mq),
+-	TP_ARGS(card, mq));
+-
+ #endif /* _TRACE_HOOK_MMC_H */
+ /* This part must be outside protection */
+ #include <trace/define_trace.h>
+diff --git a/include/trace/hooks/psi.h b/include/trace/hooks/psi.h
+index 91a008655031469acd472184ced194c9d8e562b1..e96741adb3d7a06ac471d2e223b943725e7311b8 100644
+--- a/include/trace/hooks/psi.h
++++ b/include/trace/hooks/psi.h
+@@ -19,6 +19,10 @@ DECLARE_HOOK(android_vh_psi_group,
+ 	TP_PROTO(struct psi_group *group),
+ 	TP_ARGS(group));
+ 
++DECLARE_HOOK(android_vh_psi_update_triggers,
++	TP_PROTO(struct psi_trigger *t, u64 now, u64 growth),
++	TP_ARGS(t, now, growth));
++
+ #endif /* _TRACE_HOOK_PSI_H */
+ 
+ /* This part must be outside protection */
+diff --git a/include/trace/hooks/sys.h b/include/trace/hooks/sys.h
+index c6352e701bd83e78216b6d8ad6e3f90744377962..ccc2abd946bc6d2a23d6cda3f3f23233222458a7 100644
+--- a/include/trace/hooks/sys.h
++++ b/include/trace/hooks/sys.h
+@@ -20,6 +20,11 @@ DECLARE_HOOK(android_vh_anon_vma_name_recog,
+ DECLARE_HOOK(android_vh_restore_mm_flags,
+ 	TP_PROTO(struct mm_struct *mm),
+ 	TP_ARGS(mm));
++
++DECLARE_RESTRICTED_HOOK(android_rvh_pr_set_vma_name_bypass,
++	TP_PROTO(struct mm_struct *mm, unsigned long addr, unsigned long size,
++		      struct anon_vma_name *anon_name, int *error, bool *bypass),
++	TP_ARGS(mm, addr, size, anon_name, error, bypass), 1);
+ #endif
+ 
+ #include <trace/define_trace.h>
+diff --git a/include/trace/hooks/ufshcd.h b/include/trace/hooks/ufshcd.h
+index 0e918837b0783b87fcbcd8dbcc52098817b714e2..8622d4c2a46acf950a69c6bc380645c324d195f6 100644
+--- a/include/trace/hooks/ufshcd.h
++++ b/include/trace/hooks/ufshcd.h
+@@ -18,6 +18,14 @@ DECLARE_HOOK(android_vh_ufs_fill_prdt,
+ 		 unsigned int segments, int *err),
+ 	TP_ARGS(hba, lrbp, segments, err));
+ 
++DECLARE_RESTRICTED_HOOK(android_rvh_ufs_reprogram_all_keys,
++			TP_PROTO(struct ufs_hba *hba, int *err),
++			TP_ARGS(hba, err), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_ufs_complete_init,
++			TP_PROTO(struct ufs_hba *hba),
++			TP_ARGS(hba), 1);
++
+ DECLARE_HOOK(android_vh_ufs_prepare_command,
+ 	TP_PROTO(struct ufs_hba *hba, struct request *rq,
+ 		 struct ufshcd_lrb *lrbp, int *err),
+diff --git a/kernel/locking/locking_main.h b/kernel/locking/locking_main.h
+index 7b0aab795f9452007170eb114c33daa10c275a87..4bf5248584912899c180682e1f65cefbd2afe950 120000
+--- a/kernel/locking/locking_main.h
++++ b/kernel/locking/locking_main.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/synchronize/oplus_locking.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/synchronize/oplus_locking.h
+\ No newline at end of file
+diff --git a/kernel/locking/oplus_locking b/kernel/locking/oplus_locking
+index 377068823db21fbd7a1320f4565ff90454270c84..ff40b807d331c9a55104ea350a509b1ac3592d7c 120000
+--- a/kernel/locking/oplus_locking
++++ b/kernel/locking/oplus_locking
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/synchronize
+\ No newline at end of file
++../../../vendor/oplus/kernel/synchronize
+\ No newline at end of file
+diff --git a/kernel/locking/oplus_locking.c b/kernel/locking/oplus_locking.c
+index bf5d91689ec8c4d69d7910667abd43c2eba4ef55..dd0e68116c9e9bc44bbd0570f07d5a10c62073de 120000
+--- a/kernel/locking/oplus_locking.c
++++ b/kernel/locking/oplus_locking.c
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/synchronize/oplus_locking.c
+\ No newline at end of file
++../../../vendor/oplus/kernel/synchronize/oplus_locking.c
+\ No newline at end of file
+diff --git a/kernel/locking/sa_common_struct.h b/kernel/locking/sa_common_struct.h
+index 995033021b284d6b72669605210c8294bf714c0d..e8aaa7a7d00da7baa754e20b861bead8d7e6f78e 120000
+--- a/kernel/locking/sa_common_struct.h
++++ b/kernel/locking/sa_common_struct.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/cpu/sched/sched_assist/sa_common_struct.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/cpu/sched/sched_assist/sa_common_struct.h
+\ No newline at end of file
+diff --git a/kernel/oplus_cpu b/kernel/oplus_cpu
+index 59db8802946681643f167dc1b9919461b2502e82..bfd3d0b433eaf85476feafe0d638aeae5511256c 120000
+--- a/kernel/oplus_cpu
++++ b/kernel/oplus_cpu
+@@ -1 +1 @@
+-../../../vendor/oplus/kernel/cpu
+\ No newline at end of file
++../../vendor/oplus/kernel/cpu
+\ No newline at end of file
+diff --git a/kernel/sched/walt/walt.c b/kernel/sched/walt/walt.c
+index 54ab3563f9b4ab140ad63b0cc661d09f14c5b7dc..c51089232924e4fe5a1d810c0a733def65102d15 100755
+--- a/kernel/sched/walt/walt.c
++++ b/kernel/sched/walt/walt.c
+@@ -3773,7 +3773,7 @@ static void android_rvh_cpu_cgroup_online(void *unused, struct cgroup_subsys_sta
+ 	walt_update_tg_pointer(css);
+ 
+ #ifdef CONFIG_OPLUS_SCHED_GROUP_OPT
+-	oplus_update_tg_map(css);
++	oplus_update_tg_map(css, false);
+ #endif
+ }
+ 
+diff --git a/kernel/signal.c b/kernel/signal.c
+index 2655ea43b640cf11bf6c5aa518185cfc6e33f484..6b1c44d0b18a2a5b81334b2a4e7873275aad9952 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1323,6 +1323,7 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
+ 
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(do_send_sig_info);
+ 
+ enum sig_handler {
+ 	HANDLER_CURRENT, /* If reachable use the current handler */
+diff --git a/mm/mm_osvelte b/mm/mm_osvelte
+index 09fb0b4bdabf2bb99f0a69d0bf85fe65da0f43d4..0fc67eb62e9d2aebefd958f364f225177ee15005 120000
+--- a/mm/mm_osvelte
++++ b/mm/mm_osvelte
+@@ -1 +1 @@
+-../../../vendor/oplus/kernel/mm/mm_osvelte
+\ No newline at end of file
++../../vendor/oplus/kernel/mm/mm_osvelte
+\ No newline at end of file
+diff --git a/modules.list.msm.sun b/modules.list.msm.sun
+index df1b4cfb69029e479e8b26edb4c801ce41ebca24..d1c994126f234d174042d66eeec834d8eb9a0636 100755
+--- a/modules.list.msm.sun
++++ b/modules.list.msm.sun
+@@ -125,7 +125,6 @@ oplus_charger_present.ko
+ bcl_pmic5.ko
+ sched-penalty.ko
+ qcom_enhance_watchdog.ko
+-oplus_mdmrst.ko
+ olc.ko
+ kernel_fb.ko
+ oplus_subsys_sleep_monitor.ko
+diff --git a/msm_dtc.bzl b/msm_dtc.bzl
+index 963a07acd360b91f8e6a154fb75edb6792ef71a9..d72fb14293a6859dc160c91a9580679551076fe3 100644
+--- a/msm_dtc.bzl
++++ b/msm_dtc.bzl
+@@ -13,7 +13,6 @@ def define_dtc_dist(target, msm_target, variant):
+         "@dtc//:fdtput",
+         "@dtc//:fdtdump",
+         "@dtc//:fdtoverlay",
+-        "@dtc//:fdtoverlaymerge",
+     ]
+     dtc_lib_targets = [
+         "@dtc//:dtc_gen",
+diff --git a/msm_kernel_extensions.bzl b/msm_kernel_extensions.bzl
+index f604dfa866b65648862d8fc748166d92ae164e21..7a11777b43c68f5f85e0ac8ca30a394c24646eca 100755
+--- a/msm_kernel_extensions.bzl
++++ b/msm_kernel_extensions.bzl
+@@ -1,7 +1,7 @@
+ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+ #load("//msm-kernel/arch/arm64/boot/dts/vendor:qcom/platform_map.bzl", _get_dtb_list = "get_dtb_list", _get_dtbo_list = "get_dtbo_list")
+ #oplus devicetree overylay use oplus dir
+-load("//msm-kernel/arch/arm64/boot/dts/vendor:oplus/platform_map.bzl", _get_dtb_list = "get_dtb_list", _get_dtbo_list = "get_dtbo_list")
++load("//msm-kernel:arch/arm64/boot/dts/vendor/oplus/platform_map.bzl", _get_dtb_list = "get_dtb_list", _get_dtbo_list = "get_dtbo_list")
+ 
+ def define_top_level_rules():
+     for skippable in ["abl", "dtc", "abi"]:
+@@ -33,7 +33,7 @@ def get_dtbo_list(target):
+     return _get_dtbo_list(target)
+ 
+ def get_dtstree(target):
+-    return "//msm-kernel/arch/arm64/boot/dts/vendor:msm_dt"
++    return None
+ 
+ def get_vendor_ramdisk_binaries(target, flavor = None):
+     return None
+diff --git a/msm_kernel_la.bzl b/msm_kernel_la.bzl
+index 5b3650961fa5057d4e7df53243829bc95e906620..1b69c7fa506b49c1abbe8f319856698c52d26f6b 100644
+--- a/msm_kernel_la.bzl
++++ b/msm_kernel_la.bzl
+@@ -153,17 +153,25 @@ def _define_kernel_build(
+       define_abi_targets: boolean determining if ABI targets should be defined
+       kmi_enforced: boolean determining if the KMI contract should be enforced
+     """
++    # NOTE: dtb_list/dtbo_list are intentionally NOT added to `outs` and "dtbs"
++    # is intentionally NOT in make_goals. The 850 source tree is missing the
++    # base/overlay .dts files under arch/arm64/boot/dts/vendor/{qcom,oplus}
++    # (e.g. sun.dts, qcom/sun-mtp-v8-overlay.dts) needed to actually build
++    # these device trees from source, so `make dtbs` hard-fails once the
++    # vendor/ subdir is even reached (see msm-kernel/arch/arm64/boot/dts/vendor/Makefile,
++    # which itself had to be added since it was also missing upstream).
++    # Until those .dts files are reconstructed/sourced, dtb.img/dtbo.img are
++    # supplied out-of-band (reused from the known-working "832" build) rather
++    # than built here, so the rest of the kernel_build (vmlinux, modules,
++    # boot.img, vendor_boot.img) can complete.
+     out_list = [".config", "Module.symvers"]
+-    if dtb_list:
+-        out_list += dtb_list
+-    if dtbo_list:
+-        out_list += dtbo_list
+ 
+     kernel_build(
+         name = target,
+         module_outs = in_tree_module_list,
+         outs = out_list,
+         build_config = ":{}_build_config".format(target),
++        make_goals = ["modules"],
+         dtstree = dtstree,
+         base_kernel = base_kernel,
+         kmi_symbol_list = "android/abi_gki_aarch64_qcom" if define_abi_targets else None,
+@@ -252,7 +260,14 @@ def _define_image_build(
+         kernel_build = ":{}".format(target),
+         base_kernel_images = "{}_images".format(base_kernel),
+         build_boot = build_boot,
+-        build_dtbo = build_dtbo,
++        # dtb.img/dtbo.img are not buildable from this source tree right now
++        # (see the NOTE in _define_kernel_build above) -- force both off here
++        # regardless of what the caller requested, so kernel_images doesn't
++        # try to reference *.dtb/*.dtbo outputs that kernel_build no longer
++        # declares. dtb.img/dtbo.img are reused out-of-band from the "832"
++        # build instead.
++        build_dtbo = False,
++        build_vendor_dtb = False,
+         build_initramfs = build_initramfs,
+         build_vendor_boot = build_vendor_boot,
+         build_vendor_kernel_boot = build_vendor_kernel_boot,
+@@ -263,7 +278,8 @@ def _define_image_build(
+         vendor_dlkm_modules_list = ":{}_vendor_dlkm_modules_list_generated".format(target),
+         system_dlkm_modules_blocklist = "modules.systemdlkm_blocklist.msm.{}".format(msm_target),
+         vendor_dlkm_modules_blocklist = "modules.vendor_blocklist.msm.{}".format(msm_target),
+-        dtbo_srcs = [":{}/".format(target) + d for d in dtbo_list] if dtbo_list else None,
++        # dtbo_srcs intentionally omitted -- see build_dtbo note above.
++        dtbo_srcs = None,
+         vendor_ramdisk_binaries = vendor_ramdisk_binaries,
+         gki_ramdisk_prebuilt_binary = gki_ramdisk_prebuilt_binary,
+         boot_image_outs = boot_image_outs,
+diff --git a/sun.bzl b/sun.bzl
+index 43d02c099e8f1480e19a01c79fe794e8afc31f95..b664aac53dbbaf1047a79f6a798a84c3396cdff2 100755
+--- a/sun.bzl
++++ b/sun.bzl
+@@ -84,7 +84,7 @@ def define_sun():
+         "drivers/iio/adc/qti-glink-adc.ko",
+         "drivers/input/misc/pm8941-pwrkey.ko",
+     	"drivers/input/misc/qcom-hv-haptics.ko",
+-        "drivers/misc/vibrator/aw8697_haptic/haptic_feedback.ko",
++        "drivers/misc/vibrator/haptic_feedback/haptic_feedback.ko",
+     	"drivers/input/misc/qpnp-power-on.ko",
+         "drivers/interconnect/qcom/icc-bcm-voter.ko",
+         "drivers/interconnect/qcom/icc-debug.ko",
+@@ -131,6 +131,10 @@ def define_sun():
+         #else
+         "drivers/power/oplus/v2/oplus_chg_v2.ko",
+         "drivers/power/oplus/test-kit/test-kit.ko",
++        # CONFIG_OPLUS_I2C_RST_NOTIFY (drivers/power/oplus/gauge_i2c_rst) builds
++        # fine and is called unconditionally from oplus_monitor_core.c, but was
++        # never declared in module_outs, so kernel_build refused to copy it out.
++        "drivers/power/oplus/gauge_i2c_rst/oplus_gauge_i2c_rst.ko",
+         #endif
+         "drivers/regulator/debug-regulator.ko",
+         "drivers/regulator/proxy-consumer.ko",
+@@ -321,21 +325,25 @@ def define_sun():
+         "drivers/soc/oplus/dft/common/feedback/kernel_fb.ko",
+         "drivers/base/kernelFwUpdate/oplus_bsp_fw_update.ko",
+         "drivers/base/touchpanel_notify/oplus_bsp_tp_notify.ko",
+-        "drivers/soc/oplus/storage/common/ufs_oplus_dbg/ufs-oplus-dbg.ko",
+         "drivers/soc/oplus/storage/common/storage_log/oplus_storage_log.ko",
+         "drivers/soc/oplus/storage/common/oplus_uprobe/oplus_uprobe.ko",
+         "drivers/soc/oplus/storage/common/oplus_f2fslog_storage/oplus_f2fslog_storage.ko",
+         "drivers/soc/oplus/storage/common/wq_dynamic_priority/oplus_wq_dynamic_priority.ko",
+         #ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
+-        "drivers/soc/oplus/multimedia/oplus_mm_kevent.ko",
+-        "drivers/soc/oplus/multimedia/oplus_mm_kevent_fb.ko",
++        "drivers/soc/oplus/multimedia/common/oplus_mm_kevent.ko",
++        "drivers/soc/oplus/multimedia/common/oplus_mm_kevent_fb.ko",
+         #endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
+ #ifdef OPLUS_TRACKPOINT_REPORT
+         "drivers/soc/oplus/trackpoint/oplus_trackpoint_report.ko",
+ #endif /* OPLUS_TRACKPOINT_REPORT */
+-        "drivers/soc/oplus/mdmrst/oplus_mdmrst.ko",
++        # oplus_mdmrst intentionally removed: drivers/soc/oplus/mdmrst is a
++        # dangling symlink (target vendor/oplus/hardware/radio/kernel/mdmrst
++        # does not exist in this source pull) -- driver is genuinely absent,
++        # its Kconfig source line and caller were already stubbed out
++        # elsewhere in this tree. Declaring it here made kernel_build's
++        # module_outs require a .ko that can never be produced.
+         "drivers/soc/oplus/fpga_notify/oplus_bsp_fpga_notify.ko",
+-        "drivers/soc/oplus/power/subsys_sleep_monitor/oplus_subsys_sleep_monitor.ko",
++        "drivers/soc/oplus/power/subsys_sleep_monitor/oplus_subsys_sleep_monitor/oplus_subsys_sleep_monitor.ko",
+         "drivers/base/magtransfer/oplus_magcvr_notify.ko",
+         "mm/mm_osvelte/oplus_bsp_mm_osvelte.ko",
+         "kernel/oplus_cpu/waker_identify/oplus_bsp_waker_identify.ko",
+@@ -398,6 +406,10 @@ def define_sun():
+             variant = variant,
+             in_tree_module_list = mod_list,
+             boot_image_opts = boot_image_opts(
++                # OnePlus 13 (sun) uses base 0x0; the boot_image_opts() default of
++                # 0x80000000 produces load offsets 0x80000000 higher than stock and
++                # yields an unbootable vendor_boot.img.
++                base_address = 0x0,
+                 earlycon_addr = "qcom_geni,0x00a9c000",
+                 kernel_vendor_cmdline_extras = kernel_vendor_cmdline_extras,
+                 board_kernel_cmdline_extras = board_kernel_cmdline_extras,

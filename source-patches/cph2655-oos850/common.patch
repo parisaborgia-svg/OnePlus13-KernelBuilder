@@ -1,0 +1,63 @@
+diff --git a/drivers/soc/oplus/storage b/drivers/soc/oplus/storage
+index 5836f496ad7dc38bd6f144de116c90fd345b79e1..a945411fba3469875582a1692bc593958b5dddff 120000
+--- a/drivers/soc/oplus/storage
++++ b/drivers/soc/oplus/storage
+@@ -1 +1 @@
+-../../../../../vendor/oplus/kernel/storage
+\ No newline at end of file
++../../../../vendor/oplus/kernel/storage
+\ No newline at end of file
+diff --git a/include/net/mac80211.h b/include/net/mac80211.h
+index 7cb5d37efa7f1c6e8cc6af6952927542f1bb70e8..e382d0e87b7e5a29f05cef554b7b27392ef0286c 100644
+--- a/include/net/mac80211.h
++++ b/include/net/mac80211.h
+@@ -4588,6 +4588,10 @@ struct ieee80211_ops {
+ 					 struct ieee80211_vif *vif,
+ 					 struct ieee80211_tdls_ch_sw_params *params);
+ 
++#ifdef CONFIG_MT7601U_OP13_STOCK_ABI
++	/* Stock CPH2655 mac80211 has two downstream callbacks in this slot. */
++	void *op13_stock_reserved_before_wake_tx_queue[2];
++#endif
+ 	void (*wake_tx_queue)(struct ieee80211_hw *hw,
+ 			      struct ieee80211_txq *txq);
+ 	void (*sync_rx_queues)(struct ieee80211_hw *hw);
+diff --git a/kernel/locking/locking_main.h b/kernel/locking/locking_main.h
+index 7b0aab795f9452007170eb114c33daa10c275a87..4bf5248584912899c180682e1f65cefbd2afe950 120000
+--- a/kernel/locking/locking_main.h
++++ b/kernel/locking/locking_main.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/synchronize/oplus_locking.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/synchronize/oplus_locking.h
+\ No newline at end of file
+diff --git a/kernel/locking/oplus_locking.c b/kernel/locking/oplus_locking.c
+index bf5d91689ec8c4d69d7910667abd43c2eba4ef55..dd0e68116c9e9bc44bbd0570f07d5a10c62073de 120000
+--- a/kernel/locking/oplus_locking.c
++++ b/kernel/locking/oplus_locking.c
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/synchronize/oplus_locking.c
+\ No newline at end of file
++../../../vendor/oplus/kernel/synchronize/oplus_locking.c
+\ No newline at end of file
+diff --git a/kernel/locking/sa_common_struct.h b/kernel/locking/sa_common_struct.h
+index 995033021b284d6b72669605210c8294bf714c0d..e8aaa7a7d00da7baa754e20b861bead8d7e6f78e 120000
+--- a/kernel/locking/sa_common_struct.h
++++ b/kernel/locking/sa_common_struct.h
+@@ -1 +1 @@
+-../../../../vendor/oplus/kernel/cpu/sched/sched_assist/sa_common_struct.h
+\ No newline at end of file
++../../../vendor/oplus/kernel/cpu/sched/sched_assist/sa_common_struct.h
+\ No newline at end of file
+diff --git a/kernel/signal.c b/kernel/signal.c
+index 2655ea43b640cf11bf6c5aa518185cfc6e33f484..6b1c44d0b18a2a5b81334b2a4e7873275aad9952 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1323,6 +1323,7 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
+ 
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(do_send_sig_info);
+ 
+ enum sig_handler {
+ 	HANDLER_CURRENT, /* If reachable use the current handler */

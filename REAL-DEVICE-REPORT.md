@@ -55,9 +55,10 @@ SM8750, via Bazel/Kleaf — not this pipeline). That approach:
 - **USB HID gadget (BadUSB-style keystroke injection) works out of the box**
   — no kernel patching needed, `CONFIG_USB_CONFIGFS_F_HID` is already
   built-in on this source tree. Only userspace configfs wiring was required.
-- **Internal Wi-Fi packet injection is still blocked**, but the blocker is now
-  narrow and understood: a from-scratch build of `cnss2.ko` (the WLAN platform
-  driver, `vendor/qcom/opensource/wlan/platform/cnss2`) hard-reboots the
+- **Replacing the internal Wi-Fi stack is still blocked**, but replacement is
+  no longer the only route under investigation. A from-scratch build of
+  `cnss2.ko` (the WLAN platform driver,
+  `vendor/qcom/opensource/wlan/platform/cnss2`) hard-reboots the
   device (SoC watchdog reset, no panic, nothing survives to pstore) the
   instant it's loaded. Isolated via a live `rmmod`/`insmod` swap harness
   (never by flashing whole partitions — every whole-partition swap we tried
@@ -80,7 +81,8 @@ SM8750, via Bazel/Kleaf — not this pipeline). That approach:
   restart-level control to downgrade that into a soft, log-producing
   failure — so further progress needs either serial/EDL-level debug access
   or a source tree that actually matches the shipped firmware. Parked for
-  now in favor of the external-adapter route below.
+  now. A later stock-stack test found a viable cfg80211 management-frame path;
+  see the dedicated update below.
 - Whole-partition swaps of a from-scratch-built `vendor_boot` or `vendor_dlkm`
   both froze on the OEM boot logo at runtime despite passing exhaustive static
   checks (symbol resolution, modversion CRC audits, dependency closure,
@@ -101,6 +103,28 @@ SM8750, via Bazel/Kleaf — not this pipeline). That approach:
   RTL8812AU / ALFA AWUS036ACH) instead of one that depends on mac80211's
   Minstrel.
 
+## Update: stock management-frame TX is reachable
+
+The stock wiphy advertises monitor mode, `NL80211_CMD_FRAME`, and management
+TX frame types. A harmless probe request using the interface address was
+accepted and received an `acked` TX-status event through the completely stock,
+already-loaded `qca_cld3_peach_v2`/`cnss2` stack.
+
+The live wiphy also already sets
+`NL80211_EXT_FEATURE_AUTH_AND_DEAUTH_RANDOM_TA`; the older Android `iw` binary
+does not know how to print that feature name. This means replacing `cnss2` is
+not required merely to reach cfg80211's auth/deauth management-TX path.
+
+One explicitly authorized, unicast deauthentication frame against the test
+host's own client connection was accepted and assigned TX cookie 100. Its
+asynchronous status was `no ack`, and the client stayed connected. That proves
+userspace-to-stock-driver management-frame submission, but not an over-the-air
+deauthentication. An independent monitor-radio capture remains necessary to
+determine whether firmware transmitted, dropped, or rewrote the frame.
+
+See [INTERNAL-WIFI-REPORT.md](INTERNAL-WIFI-REPORT.md) for the precise boundary
+of what was and was not demonstrated.
+
 ## Takeaway for this repo
 
 If you're targeting a **real retail CPH2655 global unit**, be aware this
@@ -110,3 +134,5 @@ a boot on this exact device+firmware combination. If your goal is internal
 wifi injection or HID specifically (not an external-adapter loader), the
 from-scratch OnePlusOSS source build is the path that's actually gotten a
 custom kernel booting reliably on this hardware, and is worth trying instead.
+The tested matched image pair is documented in
+[DEVICE-RELEASE.md](DEVICE-RELEASE.md).

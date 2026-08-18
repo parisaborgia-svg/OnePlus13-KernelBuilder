@@ -6,6 +6,13 @@ GitHub Actions workflow that builds custom **OnePlus 13** (SM8750 / "sun") kerne
 
 Built on the [WildKernels/OnePlus_KernelSU_SUSFS](https://github.com/WildKernels/OnePlus_KernelSU_SUSFS) pipeline, vendored at a pinned commit and specialized to a single device. Produces a flashable AnyKernel3 ZIP, a raw kernel `Image`, and a loadable wireless-module pack.
 
+> [!NOTE]
+> A separate, experimental CPH2655/OxygenOS 15.0.0.850 prerelease contains
+> the from-scratch OnePlusOSS `boot` + `system_dlkm` pair that actually booted
+> on our retail device. It is not produced by this repository's Actions
+> pipeline. Read [DEVICE-RELEASE.md](DEVICE-RELEASE.md) before downloading or
+> flashing it.
+
 ## Features
 
 | | |
@@ -35,8 +42,22 @@ Drivers are built as modules and shipped in `kernel_modules_*.zip`:
 
 ## Not included
 
-- **No boot.img / vendor_boot / DLKM images.** Output is a raw `Image`, an AnyKernel3 ZIP, and a modules ZIP.
+- **CI does not emit boot.img / vendor_boot / DLKM images.** Workflow output is a raw `Image`, an AnyKernel3 ZIP, and a modules ZIP. The separately documented retail-device prerelease is the sole exception.
 - **No other devices.** OnePlus 13 only.
+
+## Retail-device prerelease
+
+The prerelease is restricted to the global CPH2655 on
+`CPH2655_15.0.0.850(EX01)`. It ships only the proven custom `boot.img` and its
+matching `system_dlkm` image. Stock `vendor_boot` and `vendor_dlkm` must remain
+in place; our custom versions of those partitions failed at runtime and are
+not distributed.
+
+- [Compatibility, flashing, and rollback](DEVICE-RELEASE.md)
+- [Full real-device history](REAL-DEVICE-REPORT.md)
+- [Stock internal Wi-Fi management-TX findings](INTERNAL-WIFI-REPORT.md)
+- [Corresponding source patches](source-patches/cph2655-oos850/README.md)
+- [Verified USB HID gadget helper](device-tools/hid/README.md)
 
 ## Supported variants
 
@@ -90,6 +111,11 @@ gh workflow run "Build OnePlus 13 Kernel" -f kernel_version="6.6.118 A16"
 | `Image_<MODEL>_<KERNEL>` | Raw ARM64 kernel image |
 
 ## Installation
+
+The steps below apply to the **GitHub Actions AnyKernel3 artifacts**, not the
+retail-device prerelease. For the latter, follow
+[DEVICE-RELEASE.md](DEVICE-RELEASE.md); its `boot` and `system_dlkm` images
+must be treated as a matched pair.
 
 1. Flash the AnyKernel3 ZIP via custom recovery, KernelSU, APatch, or another flasher.
 2. Reboot and install the matching manager app — [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases) or [KernelSU](https://github.com/tiann/KernelSU/releases).

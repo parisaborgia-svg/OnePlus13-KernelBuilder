@@ -62,14 +62,25 @@ SM8750, via Bazel/Kleaf — not this pipeline). That approach:
   instant it's loaded. Isolated via a live `rmmod`/`insmod` swap harness
   (never by flashing whole partitions — every whole-partition swap we tried
   passed every static check and then failed identically at runtime, so static
-  verification cannot catch this class of bug in this source tree). Leading
-  theory: this OnePlusOSS source revision is newer than the shipped firmware
-  and unconditionally probes for a "direct-link"/"FIG" hardware capability
-  (`qcom,cnss-direct-link`, `qcom,cnss-fig`) this device's firmware/devicetree
-  doesn't provide. Stock's own `cnss2.ko` doesn't export
-  `cnss_get_direct_link_sid` at all, consistent with stock having been built
-  with that feature compiled out. Actively being worked (trimming that probe
-  path to match stock's feature set, or sourcing firmware-matched revision).
+  verification cannot catch this class of bug in this source tree). An
+  earlier theory — that this OnePlusOSS source revision unconditionally
+  probes a "direct-link"/"FIG" hardware capability (`qcom,cnss-direct-link`,
+  `qcom,cnss-fig`) this device's firmware/devicetree doesn't provide — was
+  checked directly against the live device tree and ruled out: the device
+  exposes only a `qcom,cnss-peach` node, and in the driver source those two
+  extra capabilities are plain match-table entries behind a single
+  `platform_driver_register()`, so probe for them structurally cannot fire
+  when no matching DT node exists. The broader diagnosis still stands (this
+  source revision is provably newer/different than what shipped on this
+  firmware — confirmed independently via `cnss2.ko`'s extra modinfo aliases
+  and its export of `cnss_get_direct_link_sid`, which stock's `cnss2.ko`
+  lacks), but the specific fault inside probe() is still unidentified. The
+  crash is a full SoC watchdog reset with nothing recoverable in
+  pstore/ramdump every time, and this device exposes no debugfs
+  restart-level control to downgrade that into a soft, log-producing
+  failure — so further progress needs either serial/EDL-level debug access
+  or a source tree that actually matches the shipped firmware. Parked for
+  now in favor of the external-adapter route below.
 - Whole-partition swaps of a from-scratch-built `vendor_boot` or `vendor_dlkm`
   both froze on the OEM boot logo at runtime despite passing exhaustive static
   checks (symbol resolution, modversion CRC audits, dependency closure,

@@ -129,6 +129,17 @@ Extract `kernel_modules_*.zip` on the device, extract the firmware ZIP, and run 
 |---------|--------|--------|--------|
 | Atheros AR9271 | `040d:3801` | `ath9k_htc` | Firmware load, `phy0`, managed + **monitor** + AP modes, frame capture confirmed |
 
+> [!WARNING]
+> This pipeline's kernel did not boot on a real, retail CPH2655 global unit
+> in our own testing (`OP13-CPH-6.6.56`, exact stock-kernel-version match) —
+> two flash attempts, including a properly `magiskboot`-repacked image with
+> a valid AVB footer and verification disabled, both failed with what looks
+> like a genuine KMI/vendor-module incompatibility, not a signing issue. The
+> adapter result above has not been independently reproduced by us on that
+> device as a result. See [REAL-DEVICE-REPORT.md](REAL-DEVICE-REPORT.md) for
+> the full writeup, including what *did* work on that hardware (a from-scratch
+> OnePlusOSS source build).
+
 Verified against the 6.6.118 A16 build. Reported PHY capabilities: IBSS, managed, AP, AP/VLAN, monitor, P2P-client, P2P-GO.
 
 ### Regulatory database
